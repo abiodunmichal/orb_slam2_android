@@ -4,35 +4,40 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.os.Environment;
 import android.os.Bundle;
+import android.os.Environment;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.Button;
-import android.widget.TextView;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View.OnTouchListener;
 import android.widget.Toast;
 
-import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 
 public class MainActivity extends Activity implements View.OnClickListener {
+
     private String VOCPath = "/storage/emulated/0/SLAM/VOC/ORBvoc.txt";
     private String TUMPath = "/storage/emulated/0/SLAM/Calibration/List.yaml";
+
     Button datasetMode, testMode;
     Button ChooseCalibration, ChooseVOC;
     TextView CalibrationTxt, VOCPathText;
+
     private static final int REQUEST_CODE_2 = 2;   // TUM file request
     private static final int REQUEST_CODE_3 = 3;   // VOC file request
     private static final int CAMERA_PERMISSION_REQUEST_CODE = 100;
+
     private Intent fileChooserIntent;
     LinearLayout loading, origin;
     GestureDetector mGestureDetector;
@@ -50,10 +55,12 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
         setContentView(R.layout.activity_main);
 
-        // Initialize log TextView
         logTextView = findViewById(R.id.logTextView);
         initLogFile();
         appendLog("MainActivity started");
+
+        // Start background thread to capture all Logcat logs (Java + native)
+        captureLogcat();
 
         testMode = findViewById(R.id.test_mode);
         testMode.setOnClickListener(this);
@@ -82,13 +89,18 @@ public class MainActivity extends Activity implements View.OnClickListener {
         rootView.setOnTouchListener(rootListener);
     }
 
-    /** Initialize log file in internal storage */
+    /** Initialize log file in app-specific Downloads folder */
     private void initLogFile() {
         try {
-            logFile = new File(getFilesDir(), "orb_slam_log.txt");
+            File downloadsDir = new File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "");
+            if (!downloadsDir.exists()) downloadsDir.mkdirs();
+
+            logFile = new File(downloadsDir, "orb_slam_log.txt");
             if (!logFile.exists()) logFile.createNewFile();
+
             appendLog("[LOG] Log file initialized: " + logFile.getAbsolutePath());
         } catch (IOException e) {
+            e.printStackTrace();
             appendLog("[LOG ERROR] Failed to create log file: " + e.getMessage());
         }
     }
@@ -117,6 +129,25 @@ public class MainActivity extends Activity implements View.OnClickListener {
         }
     }
 
+    /** Start a thread to capture all Logcat output (Java + native) */
+    private void captureLogcat() {
+        new Thread(() -> {
+            try {
+                Process process = Runtime.getRuntime().exec("logcat -v time *:V");
+                BufferedReader bufferedReader = new BufferedReader(
+                        new InputStreamReader(process.getInputStream()));
+
+                String line;
+                while ((line = bufferedReader.readLine()) != null) {
+                    appendLog("[LOGCAT] " + line);
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+                appendLog("[LOGCAT ERROR] " + e.getMessage());
+            }
+        }).start();
+    }
+
     // Camera permission check
     private boolean checkCameraPermission() {
         int result = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA);
@@ -127,7 +158,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
 
     private void requestCameraPermission() {
         appendLog("[CAMERA] Requesting camera permission...");
-        ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_REQUEST_CODE);
+        requestPermissions(new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_REQUEST_CODE);
     }
 
     @Override
@@ -135,7 +166,6 @@ public class MainActivity extends Activity implements View.OnClickListener {
         if (requestCode == CAMERA_PERMISSION_REQUEST_CODE) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 appendLog("[CAMERA] Permission granted by user");
-                Toast.makeText(this, "Camera permission granted", Toast.LENGTH_SHORT).show();
                 startSLAMActivity();
             } else {
                 appendLog("[CAMERA ERROR] Permission denied by user");
@@ -151,18 +181,12 @@ public class MainActivity extends Activity implements View.OnClickListener {
         appendLog("===== SLAM Initialization Started =====");
 
         File calibFile = new File(TUMPath);
-        if (calibFile.exists()) {
-            appendLog("[OK] Calibration file found: " + TUMPath);
-        } else {
-            appendLog("[ERROR] Calibration file NOT found: " + TUMPath);
-        }
+        if (calibFile.exists()) appendLog("[OK] Calibration file found: " + TUMPath);
+        else appendLog("[ERROR] Calibration file NOT found: " + TUMPath);
 
         File vocFile = new File(VOCPath);
-        if (vocFile.exists()) {
-            appendLog("[OK] Vocabulary file found: " + VOCPath);
-        } else {
-            appendLog("[ERROR] Vocabulary file NOT found: " + VOCPath);
-        }
+        if (vocFile.exists()) appendLog("[OK] Vocabulary file found: " + VOCPath);
+        else appendLog("[ERROR] Vocabulary file NOT found: " + VOCPath);
 
         try {
             Bundle bundle = new Bundle();
@@ -233,4 +257,4 @@ public class MainActivity extends Activity implements View.OnClickListener {
             return super.onFling(e1, e2, velocityX, velocityY);
         }
     }
-			}
+	}
