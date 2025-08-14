@@ -8,25 +8,49 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Set up JDK 17
+      - name: Set up JDK 17 (for SDK install)
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: 17
 
-      - name: Grant permission to execute gradlew
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v2
+        with:
+          api-level: 33
+          build-tools-version: 33.0.2
+
+      - name: Set up JDK 8 (for Gradle build)
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: 8
+
+      - name: Rename local.properties to avoid wrong SDK path
+        working-directory: ORB_slam_test
+        run: mv local.properties local.properties.bak || true
+
+      - name: Make Gradle wrapper executable
+        working-directory: ORB_slam_test
         run: chmod +x ./gradlew
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug
+        working-directory: ORB_slam_test
+        run: ./gradlew assembleDebug -Psdk.dir=$ANDROID_SDK_ROOT
+
+      - name: List APK files
+        working-directory: ORB_slam_test
+        run: find . -type f -name "*.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: ORB_slam_test/ORB_SLAM2_Android/build/outputs/apk/oRB_SLAM2_Android-debug.apk
