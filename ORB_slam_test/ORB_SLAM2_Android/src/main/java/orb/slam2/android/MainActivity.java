@@ -1,161 +1,222 @@
 package orb.slam2.android;
 
-
+import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.os.Environment;
-import android.text.TextUtils;
 import android.os.Bundle;
 import android.view.View;
-import android.view.View.OnClickListener;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.Button;
-import android.widget.Toast;
 import android.widget.TextView;
 import android.widget.LinearLayout;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View.OnTouchListener;
+import android.widget.Toast;
 
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
-public class MainActivity extends Activity implements OnClickListener{
+import java.io.File;
+
+public class MainActivity extends Activity implements View.OnClickListener {
+    private static final String TAG = "ORB_SLAM2";
+
     private String VOCPath = "/storage/emulated/0/SLAM/VOC/ORBvoc.txt";
     private String TUMPath = "/storage/emulated/0/SLAM/Calibration/List.yaml";
-	Button datasetMode,  testMode;
-    
-    Button ChooseCalibration,ChooseVOC;
-    TextView CalibrationTxt,VOCPathText;
-    
-    private static final int REQUEST_CODE_2 = 2;   //TUM文件请求码
-    private static final int REQUEST_CODE_3 = 3;   //VOC文件请求码
-    private Intent fileChooserIntent ;
-    public static final String EXTRA_FILE_CHOOSER = "file_chooser";
-    
-    LinearLayout loading,origin;
+    Button datasetMode, testMode;
+    Button ChooseCalibration, ChooseVOC;
+    TextView CalibrationTxt, VOCPathText;
+    private static final int REQUEST_CODE_2 = 2;   // TUM file request
+    private static final int REQUEST_CODE_3 = 3;   // VOC file request
+    private static final int CAMERA_PERMISSION_REQUEST_CODE = 100;
+    private Intent fileChooserIntent;
+    LinearLayout loading, origin;
     GestureDetector mGestureDetector;
+
+    // On-screen log TextView
+    private TextView logTextView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        requestWindowFeature(Window.FEATURE_NO_TITLE);//隐藏标题
+        requestWindowFeature(Window.FEATURE_NO_TITLE); // Hide title
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
-          WindowManager.LayoutParams.FLAG_FULLSCREEN);//设置全屏
+                WindowManager.LayoutParams.FLAG_FULLSCREEN); // Fullscreen
         setContentView(R.layout.activity_main);
-   //     datasetMode=(Button)findViewById(R.id.dataset_mode);
-//		cameraMode=(Button)findViewById(R.id.camera_mode);
-		testMode=(Button)findViewById(R.id.test_mode);
-  //      datasetMode.setOnClickListener(this);
-  //     cameraMode.setOnClickListener(this);
-		testMode.setOnClickListener(this);
-        
-        ChooseCalibration=(Button)findViewById(R.id.choose_calibration);
-        ChooseVOC=(Button)findViewById(R.id.choose_voc);
+
+        // Initialize log TextView
+        logTextView = findViewById(R.id.logTextView);
+        appendLog("MainActivity started");
+
+        testMode = findViewById(R.id.test_mode);
+        testMode.setOnClickListener(this);
+
+        ChooseCalibration = findViewById(R.id.choose_calibration);
+        ChooseVOC = findViewById(R.id.choose_voc);
         ChooseCalibration.setOnClickListener(this);
         ChooseVOC.setOnClickListener(this);
-        CalibrationTxt=(TextView)findViewById(R.id.cal_path_txt);
-        VOCPathText=(TextView)findViewById(R.id.voc_path_txt);
+        CalibrationTxt = findViewById(R.id.cal_path_txt);
+        VOCPathText = findViewById(R.id.voc_path_txt);
 
-//add on April 27th ,li
-        CalibrationTxt.setText("calibration path is "+TUMPath);
-        VOCPathText.setText("VOC path is "+VOCPath);
+        CalibrationTxt.setText("calibration path is " + TUMPath);
+        VOCPathText.setText("VOC path is " + VOCPath);
 
-        fileChooserIntent =  new Intent(this ,
-                FileChooserActivity.class);
-                
-        loading = (LinearLayout) this.findViewById(R.id.loading);
-        origin = (LinearLayout) this.findViewById(R.id.origin);
-        
+        fileChooserIntent = new Intent(this, FileChooserActivity.class);
+
+        loading = findViewById(R.id.loading);
+        origin = findViewById(R.id.origin);
+
         mGestureDetector = new GestureDetector(this, new MyGestureListener());
-        OnTouchListener rootListener = new OnTouchListener() {
-			public boolean onTouch(View v, MotionEvent event) {
-                mGestureDetector.onTouchEvent(event);
-                return true;
-            }
+        OnTouchListener rootListener = (v, event) -> {
+            mGestureDetector.onTouchEvent(event);
+            return true;
         };
         View rootView = findViewById(R.id.FrameLayout1);
         rootView.setOnTouchListener(rootListener);
     }
 
+    // Helper function to display logs on-screen
+    public void appendLog(String message) {
+        runOnUiThread(() -> {
+            logTextView.append(message + "\n");
+            final int scrollAmount = logTextView.getLayout().getLineTop(logTextView.getLineCount()) - logTextView.getHeight();
+            if (scrollAmount > 0)
+                logTextView.scrollTo(0, scrollAmount);
+            else
+                logTextView.scrollTo(0, 0);
+        });
+    }
 
+    // Camera permission check
+    private boolean checkCameraPermission() {
+        int result = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA);
+        boolean granted = result == PackageManager.PERMISSION_GRANTED;
+        appendLog("[CAMERA] Permission granted? " + granted);
+        return granted;
+    }
 
-    // change on April 27th ,li
-	@Override
-	public void onClick(View v) {
-		// TODO Auto-generated method stub
-		switch(v.getId()){
-		case R.id.dataset_mode:
-//			startActivity(new Intent(MainActivity.this,DataSetModeActivity.class));
-         break;
-//		case R.id.camera_mode:
-//			//Toast.makeText(MainActivity.this, "on the way...", Toast.LENGTH_LONG).show();
-//			startActivity(new Intent(MainActivity.this,CameraModeActivity.class));
-//			break;
+    // Request camera permission
+    private void requestCameraPermission() {
+        appendLog("[CAMERA] Requesting camera permission...");
+        ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_REQUEST_CODE);
+    }
 
-		case R.id.test_mode:
-			//Toast.makeText(MainActivity.this, "on the way...", Toast.LENGTH_LONG).show();
-			// startActivity(new Intent(MainActivity.this,TestModeActivity.class));
-            Bundle bundle=new Bundle();
-            bundle.putString("voc",VOCPath );
-            bundle.putString("calibration",TUMPath );
-            Intent intent =new Intent(MainActivity.this,ORBSLAMForTestActivity.class);
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        if (requestCode == CAMERA_PERMISSION_REQUEST_CODE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                appendLog("[CAMERA] Permission granted by user");
+                Toast.makeText(this, "Camera permission granted", Toast.LENGTH_SHORT).show();
+                startSLAMActivity();
+            } else {
+                appendLog("[CAMERA ERROR] Permission denied by user");
+                Toast.makeText(this, "Camera permission is required for SLAM", Toast.LENGTH_LONG).show();
+            }
+        } else {
+            super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        }
+    }
+
+    // Start SLAM Activity with logging
+    private void startSLAMActivity() {
+        appendLog("===== SLAM Initialization Started =====");
+
+        File calibFile = new File(TUMPath);
+        if (calibFile.exists()) {
+            appendLog("[OK] Calibration file found: " + TUMPath);
+        } else {
+            appendLog("[ERROR] Calibration file NOT found: " + TUMPath);
+        }
+
+        File vocFile = new File(VOCPath);
+        if (vocFile.exists()) {
+            appendLog("[OK] Vocabulary file found: " + VOCPath);
+        } else {
+            appendLog("[ERROR] Vocabulary file NOT found: " + VOCPath);
+        }
+
+        try {
+            Bundle bundle = new Bundle();
+            bundle.putString("voc", VOCPath);
+            bundle.putString("calibration", TUMPath);
+            Intent intent = new Intent(MainActivity.this, ORBSLAMForTestActivity.class);
             intent.putExtras(bundle);
+
+            appendLog("Launching ORBSLAMForTestActivity...");
             startActivity(intent);
-			break;
-        case R.id.choose_calibration:
-                if(Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED))
-                    startActivityForResult(fileChooserIntent , REQUEST_CODE_2);
+            appendLog("===== SLAM Initialization Triggered Successfully =====");
+        } catch (Exception e) {
+            appendLog("[SLAM ERROR] Failed to launch ORBSLAMForTestActivity: " + e.getMessage());
+            Toast.makeText(this, "Error launching SLAM activity: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    // Handle button clicks
+    @Override
+    public void onClick(View v) {
+        switch (v.getId()) {
+            case R.id.dataset_mode:
+                // startActivity(new Intent(MainActivity.this, DataSetModeActivity.class));
+                break;
+            case R.id.test_mode:
+                if (checkCameraPermission()) {
+                    startSLAMActivity();
+                } else {
+                    requestCameraPermission();
+                }
+                break;
+            case R.id.choose_calibration:
+                if (Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED))
+                    startActivityForResult(fileChooserIntent, REQUEST_CODE_2);
                 else
                     Toast.makeText(MainActivity.this, "can't find SDcard", Toast.LENGTH_LONG).show();
                 break;
-        case R.id.choose_voc:
-            if(Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED))
-                startActivityForResult(fileChooserIntent , REQUEST_CODE_3);
-           else
-                Toast.makeText(MainActivity.this, "can't find SDcard", Toast.LENGTH_LONG).show();
-           break;
-		}
-	}
-    
-    
-    public void onActivityResult(int requestCode , int resultCode , Intent data){
-        if(resultCode == RESULT_CANCELED){
+            case R.id.choose_voc:
+                if (Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED))
+                    startActivityForResult(fileChooserIntent, REQUEST_CODE_3);
+                else
+                    Toast.makeText(MainActivity.this, "can't find SDcard", Toast.LENGTH_LONG).show();
+                break;
+        }
+    }
+
+    // Handle file chooser results
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (resultCode == RESULT_CANCELED) {
             Toast.makeText(MainActivity.this, "no return value", Toast.LENGTH_LONG).show();
-            return ;
-        }
-        if(resultCode == RESULT_OK && requestCode == REQUEST_CODE_2){
-            //获取路径名
-            TUMPath = data.getStringExtra(EXTRA_FILE_CHOOSER);
-            CalibrationTxt.setText("calibration path is "+TUMPath);
             return;
         }
-        if(resultCode == RESULT_OK && requestCode == REQUEST_CODE_3){
-            //获取路径名
-            VOCPath = data.getStringExtra(EXTRA_FILE_CHOOSER);
-            VOCPathText.setText("VOC path is "+VOCPath);
+        if (resultCode == RESULT_OK && requestCode == REQUEST_CODE_2) {
+            TUMPath = data.getStringExtra("file_chooser");
+            CalibrationTxt.setText("calibration path is " + TUMPath);
+            appendLog("[UPDATE] Calibration path set to: " + TUMPath);
             return;
         }
-
+        if (resultCode == RESULT_OK && requestCode == REQUEST_CODE_3) {
+            VOCPath = data.getStringExtra("file_chooser");
+            VOCPathText.setText("VOC path is " + VOCPath);
+            appendLog("[UPDATE] VOC path set to: " + VOCPath);
+            return;
+        }
     }
-    
-    private class MyGestureListener extends
-			GestureDetector.SimpleOnGestureListener {
 
-		@Override
-		public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX,
-				float velocityY) {
-			// TODO Auto-generated method stub
-			if ((e1.getX() - e2.getX() > 50)
-					&& Math.abs(velocityX) > 50) {
-				loading.setVisibility(View.VISIBLE);
+    // Gesture listener for UI
+    private class MyGestureListener extends GestureDetector.SimpleOnGestureListener {
+        @Override
+        public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX,
+                               float velocityY) {
+            if ((e1.getX() - e2.getX() > 50) && Math.abs(velocityX) > 50) {
+                loading.setVisibility(View.VISIBLE);
                 origin.setVisibility(View.INVISIBLE);
-			} else if ((e2.getX() - e1.getX() > 50)
-					&& Math.abs(velocityX) > 50) {
+            } else if ((e2.getX() - e1.getX() > 50) && Math.abs(velocityX) > 50) {
                 origin.setVisibility(View.VISIBLE);
-				loading.setVisibility(View.INVISIBLE);
-			}
-
-			return super.onFling(e1, e2, velocityX, velocityY);
-		}
+                loading.setVisibility(View.INVISIBLE);
+            }
+            return super.onFling(e1, e2, velocityX, velocityY);
+        }
     }
-}
+				}
