@@ -21,10 +21,10 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 
 public class MainActivity extends Activity implements View.OnClickListener {
-    private static final String TAG = "ORB_SLAM2";
-
     private String VOCPath = "/storage/emulated/0/SLAM/VOC/ORBvoc.txt";
     private String TUMPath = "/storage/emulated/0/SLAM/Calibration/List.yaml";
     Button datasetMode, testMode;
@@ -39,17 +39,20 @@ public class MainActivity extends Activity implements View.OnClickListener {
 
     // On-screen log TextView
     private TextView logTextView;
+    // Log file
+    private File logFile;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        requestWindowFeature(Window.FEATURE_NO_TITLE); // Hide title
+        requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
-                WindowManager.LayoutParams.FLAG_FULLSCREEN); // Fullscreen
+                WindowManager.LayoutParams.FLAG_FULLSCREEN);
         setContentView(R.layout.activity_main);
 
         // Initialize log TextView
         logTextView = findViewById(R.id.logTextView);
+        initLogFile();
         appendLog("MainActivity started");
 
         testMode = findViewById(R.id.test_mode);
@@ -79,16 +82,39 @@ public class MainActivity extends Activity implements View.OnClickListener {
         rootView.setOnTouchListener(rootListener);
     }
 
-    // Helper function to display logs on-screen
+    /** Initialize log file in internal storage */
+    private void initLogFile() {
+        try {
+            logFile = new File(getFilesDir(), "orb_slam_log.txt");
+            if (!logFile.exists()) logFile.createNewFile();
+            appendLog("[LOG] Log file initialized: " + logFile.getAbsolutePath());
+        } catch (IOException e) {
+            appendLog("[LOG ERROR] Failed to create log file: " + e.getMessage());
+        }
+    }
+
+    /** Append log to screen and file */
     public void appendLog(String message) {
+        final String timestampedMessage = "[" + System.currentTimeMillis() + "] " + message;
+
+        // On-screen
         runOnUiThread(() -> {
-            logTextView.append(message + "\n");
+            logTextView.append(timestampedMessage + "\n");
             final int scrollAmount = logTextView.getLayout().getLineTop(logTextView.getLineCount()) - logTextView.getHeight();
-            if (scrollAmount > 0)
-                logTextView.scrollTo(0, scrollAmount);
-            else
-                logTextView.scrollTo(0, 0);
+            if (scrollAmount > 0) logTextView.scrollTo(0, scrollAmount);
+            else logTextView.scrollTo(0, 0);
         });
+
+        // File
+        if (logFile != null) {
+            new Thread(() -> {
+                try (FileWriter fw = new FileWriter(logFile, true)) {
+                    fw.write(timestampedMessage + "\n");
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }).start();
+        }
     }
 
     // Camera permission check
@@ -99,7 +125,6 @@ public class MainActivity extends Activity implements View.OnClickListener {
         return granted;
     }
 
-    // Request camera permission
     private void requestCameraPermission() {
         appendLog("[CAMERA] Requesting camera permission...");
         ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_REQUEST_CODE);
@@ -121,7 +146,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
         }
     }
 
-    // Start SLAM Activity with logging
+    /** Start ORB SLAM activity with logging */
     private void startSLAMActivity() {
         appendLog("===== SLAM Initialization Started =====");
 
@@ -155,60 +180,49 @@ public class MainActivity extends Activity implements View.OnClickListener {
         }
     }
 
-    // Handle button clicks
     @Override
     public void onClick(View v) {
         switch (v.getId()) {
             case R.id.dataset_mode:
-                // startActivity(new Intent(MainActivity.this, DataSetModeActivity.class));
                 break;
             case R.id.test_mode:
-                if (checkCameraPermission()) {
-                    startSLAMActivity();
-                } else {
-                    requestCameraPermission();
-                }
+                if (checkCameraPermission()) startSLAMActivity();
+                else requestCameraPermission();
                 break;
             case R.id.choose_calibration:
                 if (Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED))
                     startActivityForResult(fileChooserIntent, REQUEST_CODE_2);
-                else
-                    Toast.makeText(MainActivity.this, "can't find SDcard", Toast.LENGTH_LONG).show();
+                else appendLog("[ERROR] SD card not available");
                 break;
             case R.id.choose_voc:
                 if (Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED))
                     startActivityForResult(fileChooserIntent, REQUEST_CODE_3);
-                else
-                    Toast.makeText(MainActivity.this, "can't find SDcard", Toast.LENGTH_LONG).show();
+                else appendLog("[ERROR] SD card not available");
                 break;
         }
     }
 
-    // Handle file chooser results
+    @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (resultCode == RESULT_CANCELED) {
-            Toast.makeText(MainActivity.this, "no return value", Toast.LENGTH_LONG).show();
+            appendLog("[INFO] File chooser canceled");
             return;
         }
         if (resultCode == RESULT_OK && requestCode == REQUEST_CODE_2) {
             TUMPath = data.getStringExtra("file_chooser");
             CalibrationTxt.setText("calibration path is " + TUMPath);
             appendLog("[UPDATE] Calibration path set to: " + TUMPath);
-            return;
         }
         if (resultCode == RESULT_OK && requestCode == REQUEST_CODE_3) {
             VOCPath = data.getStringExtra("file_chooser");
             VOCPathText.setText("VOC path is " + VOCPath);
             appendLog("[UPDATE] VOC path set to: " + VOCPath);
-            return;
         }
     }
 
-    // Gesture listener for UI
     private class MyGestureListener extends GestureDetector.SimpleOnGestureListener {
         @Override
-        public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX,
-                               float velocityY) {
+        public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
             if ((e1.getX() - e2.getX() > 50) && Math.abs(velocityX) > 50) {
                 loading.setVisibility(View.VISIBLE);
                 origin.setVisibility(View.INVISIBLE);
@@ -219,4 +233,4 @@ public class MainActivity extends Activity implements View.OnClickListener {
             return super.onFling(e1, e2, velocityX, velocityY);
         }
     }
-				}
+			}
