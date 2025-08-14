@@ -47,6 +47,17 @@
             android:background="@null"
             android:text="if you wang to change files  >>>"
             android:textColor="#ffffff" />
+        <TextView
+    android:id="@+id/logTextView"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:scrollbars="vertical"
+    android:textColor="#FFFFFF"
+    android:background="#80000000"
+    android:padding="8dp"
+    android:textSize="12sp"
+    android:gravity="top"
+    android:layout_alignParentBottom="true"/>
     </LinearLayout>
 
 
